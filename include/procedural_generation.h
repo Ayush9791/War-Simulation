@@ -10,6 +10,18 @@ struct PieceData
     int cost;
 };
 
+enum BinaryStateSpace
+{
+    ClearOwn,
+    Unfair,
+    FullyIsolated,
+    PartIsolated,
+    Balanced,
+    Unbalanced,
+    NOTA,
+    COUNT
+};
+
 struct BoardState
 {
     vector<vector<PieceData>> village;
@@ -19,46 +31,87 @@ struct BoardState
     vector<vector<int>> player_locations;
 };
 
-enum BinaryStateSpace
-{
-    ClearOwn,
-    Unfair,
-    FullyIsolated,
-    PartIsolated,
-    Balanced,
-    Unbalanced,
-    NOTA
-};
-
 enum logic
 {
     every,
     any,
-    equality
 };
 
-template <typename Func>
-bool check(logic q, vector<int> a, Func F)
+enum class ActionSpace
+{
+    GenerateRiver,
+    MutateRiver,
+    BuildBridge,
+    COUNT
+};
+
+enum class PairKind { PP, PV, VV, COUNT };
+
+struct Action
+{
+    ActionSpace action;
+    PairKind type;
+    vector<vector<int>> args;
+};
+
+struct PositionBalance
+{
+    vector<vector<vector<int>>> position;  // Per village cost for (Player X - Player Y) [V, Pi, Pj]
+    vector<vector<int>> combat;            // Distance matrix of each player to another player [Pi, Pj]
+};
+
+struct Observation
+{
+    BinaryStateSpace previous_state;
+    ActionSpace action;
+    PairKind type;
+    BinaryStateSpace next_state;
+    int count;
+    bool operator==(const Observation& other) const
+    {
+	return previous_state == other.previous_state &&
+	action == other.action &&
+	type == other.type &&
+	next_state == other.next_state;
+    }
+};
+
+template <typename T, typename Func>
+bool check(logic q, const T& a, Func F)
 {
     bool out_a = true;
     bool out_b = false;
-    if (q == every) { for (int x : a) { out_a = out_a && F(x); } return out_a; }
-    else if (q == any) { for (int x : a) { out_b = out_b || F(x); } return out_b; }
-    else if (q == equality) { for (int i=1; i < a.size(); i++) { out_a = out_a && (a[i] == a[i-1]); } return out_a; }
+    if (q == every) { for (const auto& x : a) { out_a = out_a && F(x); } return out_a; }
+    else if (q == any) { for (const auto& x : a) { out_b = out_b || F(x); } return out_b; }
     return false;
 }
 
-template <typename Func>
-bool check(logic q, vector<vector<int>> a, Func F)
+template <typename T>
+bool check_equality(const T& a)
 {
     bool out_a = true;
-    bool out_b = false;
-    if (q == every) { for (vector<int> x : a) { out_a = out_a && F(x); } return out_a; }
-    else if (q == any) { for (vector<int> x : a) { out_b = out_b || F(x); } return out_b; }
-    else if (q == equality) { for (int i=1; i < a.size(); i++) { out_a = out_a && (a[i] == a[i-1]); } return out_a; }
-    return false;
+    for (int i=1; i < a.size(); i++) { out_a = out_a && (a[i] == a[i-1]); } return out_a;
 }
 
+struct Habitat
+{
+    vector<vector<int>> river;
+    vector<vector<vector<int>>> river_extension;
+    vector<vector<int>> mountains;
+    vector<vector<int>> forests;
+    vector<vector<int>> bridges;
+};
+
+struct river_orientation
+{
+    vector<int> coordinates;
+    vector<vector<int>> orientation;
+    int cost;
+    vector<int> new_orn_coord;
+};
+
+bool if_in_(vector<vector<int>> in, vector<int> lookup);
+bool twobytwo(vector<int> new_coord, vector<vector<int>> river);
 
 class TerrainSeed
 {
@@ -66,14 +119,14 @@ class TerrainSeed
 	vector<vector<int>> map;
 	vector<vector<int>> cost_map;
 	vector<vector<double>> explored;
-	const int WIDTH;
-	const int HEIGHT;
+        int WIDTH;
+	int HEIGHT;
 	
     public:
 	TerrainSeed(vector<vector<int>> map);
 	int draw_offset();
 	void draw(vector<vector<int>> coord, int MOV);
-	const int calculate_cost(const vector<vector<int>>& path);
+    const int calculate_cost(const vector<vector<int>>& path, vector<vector<int>>& in_comap);
 	bool check_diagonality(const vector<int>& a, const vector<int>& b);
 	void swap(vector<int>& out, const vector<int>& a, const vector<int>& b);
 	void smoothen(vector<vector<int>>& path);
@@ -111,15 +164,32 @@ class TerrainEngine
 	TerrainSeed seed;
 	BoardState board;
 	BoardState board_init(const vector<vector<int>>& guilds, const vector<vector<int>>& villages, int MOV);
-	bool spaced(const vector<vector<int>>& coords, const vector<int>& new_pt, int MIN_DIST, int MOV);
-	vector<vector<int>> random_n_coords(int N, int MIN_DIST, int MOV);
+    bool spaced(TerrainSeed& draft, const vector<vector<int>>& coords, const vector<int>& new_pt, int MIN_DIST, int MOV);
+    vector<vector<int>> random_n_coords(TerrainSeed& draft, int N, int MIN_DIST, int MOV);
 	
     public:
 	TerrainEngine(vector<vector<int>>& map, vector<vector<int>> guilds, vector<vector<int>> villages, int MOV);
 	TerrainEngine(vector<vector<int>>& map, int Nobj, int MINDIST, int MOV);
-	BoardState get_board();
-	BoardState simulate(BoardState board, vector<vector<int>>& cost_grid, int MOV);
-	vector<vector<int>> simulate(int MOV);
-	void update(int MOV);
-	BinaryStateSpace EvalBinaryState();
+	BoardState& get_board();
+	TerrainSeed& get_seed();
+	BoardState simulate_init(TerrainSeed& draft, const vector<vector<int>>& guilds, const vector<vector<int>>& villages, int MOV);
+	BoardState simulate_init(TerrainSeed& draft, int Nobj, int MINDIST, int MOV);
+	BoardState simulate(TerrainSeed& draft, BoardState board, vector<vector<int>>& cost_grid, int MOV);
+    void simulate(vector<Observation>& episode, vector<Observation>& obs_directory, Habitat& mainenv, TerrainSeed& draft, int Nobj, int MINDIST, int MOV, BinaryStateSpace& desired_state, int global_tries, bool& status);
+	void update(TerrainSeed& draft, BoardState& new_board, int MOV);
+	BinaryStateSpace EvalBinaryState(BoardState& board);
+    PositionBalance EvalPosition(int MOV, TerrainSeed& draft, BoardState& board);
+	int ActionRNG(int count);
+    Action Sample_Action(BoardState& board, const TerrainSeed& draft, Habitat& hab);
+    Observation Perform_Action(Habitat& mainenv, Action& action, BoardState& board, TerrainSeed& draft, int MOV);
+    int choose_extension_randomly(const vector<vector<vector<int>>>& ext);
+    vector<vector<int>> distance_field(const vector<int>& start, const vector<vector<int>>& comap, int MOV);
+};
+
+struct Snapshot
+{
+    Habitat env;
+    TerrainSeed seed;
+    BoardState board;
+    vector<Observation> observations;
 };

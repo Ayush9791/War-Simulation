@@ -47,3 +47,39 @@ map_tile_library/src/map_monitor.mm \
 map_tile_library/src/map_tile_library.mm \
 -framework Cocoa -framework CoreFoundation -framework CoreGraphics -framework ImageIO \
 -o bin/custom_maps && ./bin/custom_maps
+
+
+// procedural generation compile
+
+set -e
+mkdir -p bin
+
+clang++ -std=c++17 -Iinclude -Imap_tile_library/include \
+  -ffunction-sections -fdata-sections \
+  -Dmain=plotter_standalone_main \
+  -c src/plotter.cpp -o /tmp/stochesia_plotter.o
+
+clang++ -std=c++17 -Iinclude -Imap_tile_library/include \
+  -ffunction-sections -fdata-sections \
+  -Dmain=raytracer_standalone_main \
+  -c src/raytracer.cpp -o /tmp/stochesia_raytracer.o
+
+clang++ -std=c++17 -Iinclude -Imap_tile_library/include \
+  -ffunction-sections -fdata-sections \
+  -c src/stock_intmaps.cpp -o /tmp/stochesia_stock_intmaps.o
+
+clang++ -std=c++17 -Iinclude -Imap_tile_library/include \
+  -ffunction-sections -fdata-sections \
+  -c src/game_data.cpp -o /tmp/stochesia_game_data.o
+
+clang++ -std=c++17 -Iinclude -Imap_tile_library/include \
+  -ffunction-sections -fdata-sections \
+  src/procedural_generation.cpp \
+  /tmp/stochesia_plotter.o \
+  /tmp/stochesia_raytracer.o \
+  /tmp/stochesia_stock_intmaps.o \
+  /tmp/stochesia_game_data.o \
+  -Wl,-dead_strip \
+  -o bin/procedural_generation
+
+./bin/procedural_generation
