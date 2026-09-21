@@ -65,3 +65,18 @@ bool is_weapon(ItemID item)
         }
     );
 }
+
+void print_matrix(const string& name, const vector<vector<int>>& matrix)
+{
+    cout << '\n' << name << '\n';
+
+    for (const vector<int>& row : matrix)
+    {
+        for (const int& cell : row)
+        {
+            cout << '[' << cell
+                 << "] ";
+        }
+        cout << '\n';
+    }
+}
